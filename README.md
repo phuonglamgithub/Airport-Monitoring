@@ -1,4 +1,4 @@
-# fixed_checkin_monitor_complete
+# Checkin_Monitor
 
 AI Check-in Monitor demo using Flask + Ultralytics YOLO.
 
