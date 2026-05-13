@@ -55,16 +55,6 @@ Open:
 http://127.0.0.1:5000
 ```
 
-## YOLO26 / Open Images V7 note
-
-`open-images-v7.yaml` is mainly needed for training. During inference, this app reads class names from the loaded `.pt` checkpoint via `model.names` and maps them to the UI labels.
-
-Example training command:
-
-```bash
-yolo detect train model=yolo26n.pt data=open-images-v7.yaml imgsz=640 epochs=50
-```
-
 ## Counting note
 
 Total IN / Total OUT is cumulative and only changes when a tracked object crosses the counting line. Current zone occupancy is separate and is not used to overwrite the cumulative totals.
