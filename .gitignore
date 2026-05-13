@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Logs and runtime data
+logs/*
+uploads/*
+
+# Keep folders
+!logs/.gitkeep
+!uploads/.gitkeep
+!models/.gitkeep
+
+# Model checkpoints
+*.pt
+*.onnx
+*.engine
+*.weights
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

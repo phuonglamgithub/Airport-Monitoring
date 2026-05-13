@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VietJet AI · Check-in Monitor</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     TOP NAV
+     ══════════════════════════════════ -->
+<header class="topnav">
+  <div class="topnav-inner">
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-logo">
+        <svg class="plane-spin" viewBox="0 0 24 24" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0 10
+                   3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13
+                   19v-5.5l8 2.5z" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">VietJet<span class="brand-accent">Air</span></span>
+        <span class="brand-sub">AI Check-in Monitor</span>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab active" data-target="live">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="7.5"
+          fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Live Detection / Counting
+      </button>
+      <button class="tab" data-target="stats">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <rect x="2" y="10" width="3" height="8" rx="1"/>
+          <rect x="8.5" y="5" width="3" height="13" rx="1"/>
+          <rect x="15" y="1" width="3" height="17" rx="1"/>
+        </svg>
+        Statistics Dashboard
+      </button>
+    </nav>
+
+    <!-- Status pill -->
+    <div class="status-pill" id="status-pill">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-lbl">Idle</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════
+     PANEL: LIVE
+     ══════════════════════════════════ -->
+<div class="panel active" id="panel-live">
+<div class="live-layout">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+
+    <div class="sidebar-hdr">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
+           stroke-width="1.6" aria-hidden="true">
+        <path d="M3 5h14M3 10h14M3 15h10"/>
+      </svg>
+      Configuration
+    </div>
+
+    <!-- 1. Operation Mode -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">1</span>Operation Mode
+      </div>
+      <select id="op-mode" class="sel">
+        <option value="detection">Detection Only</option>
+        <option value="counting">Counting Mode</option>
+        <option value="detection_counting" selected>Detection &amp; Counting</option>
+      </select>
+      <p class="cfg-hint" id="op-hint">Vừa phát hiện object vừa đếm IN / OUT theo vùng trái/phải</p>
+    </div>
+
+    <!-- Counting Line Direction -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">↔</span>Counting Line
+      </div>
+      <select id="count-axis" class="sel">
+        <option value="x" selected>Vertical line — count left/right crossing</option>
+        <option value="y">Horizontal line — count top/bottom crossing</option>
+      </select>
+      <p class="cfg-hint">For airport/check-in videos, use Vertical line. Total IN/OUT increases only when a tracked object crosses the line.</p>
+    </div>
+
+
+    <!-- Counting Line Position + IN/OUT Direction -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">%</span>Counting Ratio &amp; Direction
+      </div>
+      <select id="count-preset" class="sel">
+        <option value="0.30:left">Left 30% / Right 70% — LEFT = IN, RIGHT = OUT</option>
+        <option value="0.30:right">Left 30% / Right 70% — LEFT = OUT, RIGHT = IN</option>
+        <option value="0.50:left">Left 50% / Right 50% — LEFT = IN, RIGHT = OUT</option>
+        <option value="0.50:right" selected>Left 50% / Right 50% — LEFT = OUT, RIGHT = IN</option>
+        <option value="0.70:left">Left 70% / Right 30% — LEFT = IN, RIGHT = OUT</option>
+        <option value="0.70:right">Left 70% / Right 30% — LEFT = OUT, RIGHT = IN</option>
+      </select>
+      <p class="cfg-hint">Choose the line position and which side is considered IN. The other side is OUT.</p>
+    </div>
+
+    <!-- 2. Model Selection -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">2</span>Model Selection
+      </div>
+      <select id="model-src" class="sel">
+        <option value="pretrained">Pretrained Model</option>
+        <option value="custom">Upload Custom Model</option>
+      </select>
+
+      <div id="pretrained-block" class="mt8">
+        <!-- Dropdown hiện danh sách .pt có trong models/ -->
+        <select id="pretrained-name" class="sel">
+          <option value="">— Chọn checkpoint —</option>
+          <!-- Populated by JS from /api/list_models -->
+        </select>
+        <!-- Nút refresh danh sách + trạng thái model đang chọn -->
+        <div class="model-info" id="model-info"></div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-outline btn-sm" id="btn-refresh-models"
+                  title="Làm mới danh sách">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0
+                       1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284
+                       0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+            Làm mới
+          </button>
+          <button class="btn btn-primary" id="btn-load" style="flex:1">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1a.5.5 0 0 1 .5.5v7.793l2.146-2.147a.5.5 0 0 1
+                       .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1
+                       .708-.708L7.5 9.293V1.5A.5.5 0 0 1 8 1z"/>
+              <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.1a1 1 0 0 0 1 1h12a1 1
+                       0 0 0 1-1v-2.1a.5.5 0 0 1 1 0v2.1a2 2 0 0 1-2
+                       2H2a2 2 0 0 1-2-2V10.4a.5.5 0 0 1 .5-.5z"/>
+            </svg>
+            Load Model
+          </button>
+        </div>
+      </div>
+
+      <div id="custom-block" class="hidden mt8">
+        <label class="file-label">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M4 0h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2
+                     2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0
+                     1-1V2a1 1 0 0 0-1-1H4z"/>
+            <path d="M4.5 12.5A.5.5 0 0 1 5 12h6a.5.5 0 0 1 0 1H5a.5.5 0 0
+                     1-.5-.5zM4.5 10A.5.5 0 0 1 5 9.5h6a.5.5 0 0 1 0 1H5A.5.5
+                     0 0 1 4.5 10zM8 7.5a.5.5 0 0 1-.5-.5V3.707L6.354 4.854a.5.5
+                     0 1 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708
+                     L8.5 3.707V7a.5.5 0 0 1-.5.5z"/>
+          </svg>
+          Choose .pt file
+          <input type="file" id="custom-file" accept=".pt"/>
+        </label>
+        <span class="file-name" id="custom-name">No file chosen</span>
+        <button class="btn btn-success w-full mt6" id="btn-upload-model">
+          Upload &amp; Load Model
+        </button>
+      </div>
+
+      <div class="msg hidden" id="model-msg"></div>
+    </div>
+
+    <!-- 3. Video Source -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">3</span>Video Source
+      </div>
+      <select id="video-src" class="sel">
+        <option value="webcam">Webcam</option>
+        <option value="video">Upload Video</option>
+      </select>
+
+      <div id="video-upload-block" class="hidden mt8">
+        <label class="file-label">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+            <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5
+                     0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-13zm13 1a.5.5 0 0 1
+                     .5.5v6l-3.775-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5
+                     0 0 0-.63.062L1.002 12v.55A.5.5 0 0 1 1 12.5v-9a.5.5 0 0 1
+                     .5-.5h13z"/>
+          </svg>
+          Choose video
+          <input type="file" id="video-file" accept=".mp4,.avi,.mov,.mkv,.webm"/>
+        </label>
+        <span class="file-name" id="video-fname">No file chosen</span>
+        <button class="btn btn-success mt6" id="btn-upload-video">
+          Upload Video
+        </button>
+        <div class="status-ok hidden" id="video-ok">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0
+                     0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06
+                     1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75
+                     0 0 0-.01-1.05z"/>
+          </svg>
+          Video uploaded!
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Thresholds -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">4</span>Thresholds
+      </div>
+      <div class="slider-field">
+        <div class="slider-top">
+          <span>Confidence</span><span class="sval" id="conf-v">0.25</span>
+        </div>
+        <input type="range" class="slider" id="conf-s"
+               min="0.05" max="0.95" step="0.05" value="0.25"/>
+      </div>
+      <div class="slider-field">
+        <div class="slider-top">
+          <span>IoU Threshold</span><span class="sval" id="iou-v">0.45</span>
+        </div>
+        <input type="range" class="slider" id="iou-s"
+               min="0.10" max="0.90" step="0.05" value="0.45"/>
+      </div>
+      <div class="slider-field">
+        <div class="slider-top">
+          <span>Frame Skip</span><span class="sval" id="skip-v">3</span>
+        </div>
+        <input type="range" class="slider" id="skip-s"
+               min="1" max="10" step="1" value="3"/>
+      </div>
+    </div>
+
+    <!-- 5. Classes -->
+    <div class="cfg-block">
+      <div class="cfg-label">
+        <span class="cfg-num">5</span>Classes to Detect
+      </div>
+      <div class="cls-list">
+        <label class="cls-row">
+          <input type="checkbox" value="Person" checked/>
+          <span class="cls-icon">👤</span>
+          <span class="cls-name">Person</span>
+          <span class="cls-badge person-badge" id="cb-Person">0</span>
+        </label>
+        <label class="cls-row">
+          <input type="checkbox" value="Luggage"/>
+          <span class="cls-icon">🧳</span>
+          <span class="cls-name">Luggage</span>
+          <span class="cls-badge luggage-badge" id="cb-Luggage">0</span>
+        </label>
+        <label class="cls-row">
+          <input type="checkbox" value="Hurry Up/Busy"/>
+          <span class="cls-icon">⚡</span>
+          <span class="cls-name">Hurry Up / Busy</span>
+          <span class="cls-badge hurry-badge" id="cb-Hurry">0</span>
+        </label>
+        <label class="cls-row">
+          <input type="checkbox" value="Pet"/>
+          <span class="cls-icon">🐾</span>
+          <span class="cls-name">Pet</span>
+          <span class="cls-badge pet-badge" id="cb-Pet">0</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="action-row">
+      <button class="btn btn-start" id="btn-start">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+        </svg>
+        Start Detection
+      </button>
+      <button class="btn btn-stop" id="btn-stop" disabled>
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>
+        </svg>
+        Stop
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN AREA ── -->
+  <main class="main-area">
+
+    <!-- Live stats bar -->
+    <div class="live-bar">
+      <div class="lb-brand">
+        <svg class="lb-plane" viewBox="0 0 24 24" fill="currentColor"
+             aria-hidden="true">
+          <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0
+                   10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13
+                   19v-5.5l8 2.5z"/>
+        </svg>
+        <span class="lb-title">Live Statistics</span>
+      </div>
+
+      <div class="lb-cards" id="lb-cards">
+        <div class="lb-card">
+          <div class="lb-val" id="lv-fps">0.0</div>
+          <div class="lb-lbl">FPS</div>
+        </div>
+        <div class="lb-card hidden" id="lbc-in">
+          <div class="lb-val" id="lv-in">0</div>
+          <div class="lb-lbl">
+            <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <path d="M6 1v10M2 7l4 4 4-4" stroke="currentColor" stroke-width="1.5"
+                    fill="none" stroke-linecap="round"/>
+            </svg>
+            Total IN
+          </div>
+        </div>
+        <div class="lb-card hidden" id="lbc-out">
+          <div class="lb-val" id="lv-out">0</div>
+          <div class="lb-lbl">
+            <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <path d="M6 11V1M2 5l4-4 4 4" stroke="currentColor" stroke-width="1.5"
+                    fill="none" stroke-linecap="round"/>
+            </svg>
+            Total OUT
+          </div>
+        </div>
+        <div class="lb-card hidden" id="lbc-net">
+          <div class="lb-val" id="lv-net">0</div>
+          <div class="lb-lbl">Net Count</div>
+        </div>
+      </div>
+
+      <div class="lb-badge" id="mode-badge">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="8" r="3.5"/>
+        </svg>
+        DETECTION MODE
+      </div>
+    </div>
+
+    <!-- Video feed -->
+    <div class="feed-card">
+      <div class="feed-hdr">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.6" aria-hidden="true">
+          <rect x="2" y="5" width="16" height="11" rx="2"/>
+          <path d="M14 10l-6 3V7l6 3z" fill="currentColor" stroke="none"/>
+        </svg>
+        Live Feed
+      </div>
+      <div class="feed-box">
+        <img id="vfeed" src="/video_feed" alt="live feed"/>
+        <div class="feed-overlay" id="feed-overlay">
+          <div class="overlay-inner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.2" aria-hidden="true">
+              <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0
+                       10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13
+                       19v-5.5l8 2.5z"/>
+            </svg>
+            <span>Configure &amp; press Start Detection</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detection statistics -->
+    <div class="det-card">
+      <div class="det-hdr">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M2 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1
+                   1 0 0 1-1-1v-5zm6-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1
+                   0 0 1-1 1H9a1 1 0 0 1-1-1V7zm6-3a1 1 0 0 1 1-1h2a1 1 0 0
+                   1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V4z"/>
+        </svg>
+        Detection Statistics
+      </div>
+      <div class="det-badges" id="det-badges">
+        <span class="det-empty">No detections yet</span>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PANEL: STATISTICS DASHBOARD
+     ══════════════════════════════════ -->
+<div class="panel" id="panel-stats">
+<div class="dash-wrap">
+
+  <!-- Dashboard header -->
+  <div class="dash-hdr">
+    <div class="dash-hdr-left">
+      <svg class="dash-plane" viewBox="0 0 24 24" fill="currentColor"
+           aria-hidden="true">
+        <path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0 0 11.5 2 1.5 1.5 0 0 0
+                 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13
+                 19v-5.5l8 2.5z"/>
+      </svg>
+      <div>
+        <div class="dash-title">Flight Statistics Dashboard</div>
+        <div class="dash-sub">
+          Auto-refresh: 3s &nbsp;·&nbsp; Last update:
+          <span id="last-update">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="dash-actions">
+      <button class="btn btn-outline" id="btn-refresh">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1
+                   8 2v1z"/>
+          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284
+                   0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+        </svg>
+        Refresh Now
+      </button>
+      <button class="btn btn-danger" id="btn-clear">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1
+                   .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0
+                   0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+          <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0
+                1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1
+                1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1z"/>
+        </svg>
+        Clear Statistics
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-in">
+      <div class="kpi-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+        </svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-val" id="kpi-in">0</div>
+        <div class="kpi-lbl">Total IN</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-out">
+      <div class="kpi-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+        </svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-val" id="kpi-out">0</div>
+        <div class="kpi-lbl">Total OUT</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-net">
+      <div class="kpi-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2
+                   2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2
+                   2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0
+                   1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/>
+        </svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-val" id="kpi-net">0</div>
+        <div class="kpi-lbl">Net Count</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-fps">
+      <div class="kpi-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-val" id="kpi-fps">0</div>
+        <div class="kpi-lbl">Avg FPS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-hdr">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M0 0h1v15h15v1H0V0zm10 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0
+                   1 .5.5v4a.5.5 0 0 1-1 0V4.9l-3.613 4.417a.5.5 0 0 1-.74.037
+                   L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0
+                   1 .758-.06l2.609 2.61L13.445 4H10.5a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+        Class-wise Detections
+      </div>
+      <canvas id="chart-bar" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hdr">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M7.5 1v7h1V1h-1z"/>
+          <path d="M3 8.812a4.999 4.999 0 0 1 2.578-4.375l-.485-.874A6 6 0 1 0
+                   14 8.812V8h-1v.812a5 5 0 1 1-10 0z"/>
+        </svg>
+        Distribution
+      </div>
+      <canvas id="chart-pie" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="chart-card wide">
+    <div class="chart-hdr">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M0 0h1v15h15v1H0V0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5
+                 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0
+                 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.29-5.244
+                 a.5.5 0 0 1 .704-.07z"/>
+      </svg>
+      Timeline — Last 50 Records
+    </div>
+    <canvas id="chart-line" height="120"></canvas>
+  </div>
+
+  <!-- Detail table -->
+  <div class="table-card">
+    <div class="chart-hdr">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2
+                 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0
+                 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1
+                 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4
+                 4H6v3h4V8z"/>
+      </svg>
+      Detailed Statistics
+    </div>
+    <div class="table-wrap">
+      <table class="dtbl">
+        <thead>
+          <tr>
+            <th>Class</th><th>IN</th><th>OUT</th><th>Total</th><th>Net</th>
+          </tr>
+        </thead>
+        <tbody id="detail-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script src="{{ url_for('static',filename='js/app.js') }}"></script>
+</body>
+</html>
