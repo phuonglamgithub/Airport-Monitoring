@@ -4,7 +4,7 @@ AI Check-in Monitor demo using Flask + Ultralytics YOLO.
 
 ## Main features
 
-- YOLO inference with COCO or YOLO26 / Open Images V7-like checkpoints.
+- YOLO inference with COCO or YOLO26.
 - Dynamic class mapping from `model.names`, not hard-coded COCO IDs only.
 - Person / Luggage / Pet detection.
 - Busy / Fast-moving passenger estimation from tracked movement speed.
